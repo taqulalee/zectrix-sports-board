@@ -113,6 +113,8 @@ def main():
     text = sys.argv[1] if len(sys.argv) > 1 else ""
     if not text:
         return 0
+    if "正在" in text and ("比赛" in text or "进行" in text):
+        return 0  # 进行中的比赛本地无数据，走 Hermes 现查
     data = load()
     team = find_team(text, data)
     f1_ctx = any(w in text for w in ("F1", "f1", "大奖赛", "正赛", "排位赛"))
