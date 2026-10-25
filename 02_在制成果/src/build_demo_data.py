@@ -367,6 +367,7 @@ def build(snapshot_dir: Path, output: Path, now: datetime, mode: str = "demo", r
         "sport": "F1",
         "title": F1_RACE_NAMES.get(next_race["raceName"], next_race["raceName"].replace("Grand Prix", "GP")),
         "startTime": race_start.isoformat(),
+        "finished": race_start < now,
         "venue": F1_CIRCUIT_NAMES.get(next_race["Circuit"]["circuitName"], next_race["Circuit"]["circuitName"]),
         "countdownLabel": f"{days}天{hours:02d}小时",
         "sessions": sessions,

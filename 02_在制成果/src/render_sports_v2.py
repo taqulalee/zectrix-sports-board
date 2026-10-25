@@ -311,8 +311,11 @@ def render_focus(
     draw.rounded_rectangle((12, 54, 88, 82), radius=5, fill=28)
     paste_white_logo(image, f1_logo, (18, 59, 82, 77))
     draw.text((14, 84), fit_text(draw, featured["title"], font(font_path, 26), 365), fill=5, font=font(font_path, 26))
-    draw.text((14, 122), "距离开赛", fill=55, font=font(font_path, 15))
-    draw_countdown(draw, featured["countdownLabel"], 14, 139, font_path)
+    if featured.get("finished"):
+        draw.text((14, 139), "已结束", fill=0, font=font(font_path, 42))
+    else:
+        draw.text((14, 122), "距离开赛", fill=55, font=font(font_path, 15))
+        draw_countdown(draw, featured["countdownLabel"], 14, 139, font_path)
     # 最新已完赛节次前三：标题行右侧、赛道图上方的空位（头像＋代号＋车队标，无标则队名）。
     top3 = featured.get("sessionTop3")
     if top3:
