@@ -2,6 +2,16 @@
 
 当前阶段：真实数据快照、统一JSON协议和三页v2预览。
 
+## 墨水屏 SDK（必备前置，本仓不含 SDK 源码）
+
+宿主通过官方 ZECTRIX 本地推送 SDK 连接设备，本仓不含 SDK 源码，首次检出需另行获取：
+
+- SDK：ZECTRIX 本地推送 SDK（Rust，crate 名 `zectrix-sdk`），版本 0.1.0，对应固件 3.7.2；适用设备 ZECTRIX Note 4（400×300），不适用 Note 4C；尚未发布到 crates.io，只能源码路径引用。
+- 下载地址：https://github.com/itopinion/zectrix-local-push-sdk.git（公开仓，可直接克隆）。
+- 摆放位置：克隆到本项目目录旁边（与 zectrix-challenge 同级）；宿主 `02_在制成果/host/Cargo.toml` 用路径引用（`zectrix-sdk = { path = "../../../zectrix-local-push-sdk" }`）。
+- 固件升级：用 Chrome 或 Edge 登录极趣云 https://cloud.zectrix.com/ ，进“本地升级”，USB 连接 Note 4 按官方说明刷写；官方说明见 https://wiki.zectrix.com/zh/software/firmware ；升级后在设备“设置 → 网络同步”启用“待机保持 Wi-Fi”。
+- 构建要求：Rust stable、CMake、C/C++ 编译器（Linux 装 build-essential、cmake、pkg-config）；首次构建需联网下载依赖。
+
 ## 生成演示数据
 
 ```bash
