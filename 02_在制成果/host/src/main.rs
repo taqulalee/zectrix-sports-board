@@ -61,6 +61,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel::<VoiceMsg>(8);
     let mut voice_busy = false;
     let mut voice_showing = false;
+    let mut recording = false;
+    let mut pending_display: std::collections::VecDeque<String> =
+        std::collections::VecDeque::new();
     let mut worker_ready = false;
     let mut voice_queue: std::collections::VecDeque<std::path::PathBuf> =
         std::collections::VecDeque::new();
@@ -142,9 +145,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Event::RecordingStarted => {
+                        recording = true;
                         println!("VOICE_LISTENING");
                     }
                     Event::RecordingFinished { audio, reason } => {
+                        recording = false;
                         match audio {
                             Some(audio) => {
                                 println!("VOICE_RECORDED\tsamples={}\treason={:?}", audio.samples.len(), reason);
@@ -173,14 +178,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 voice_queue.push_back(wav_path);
                                                 Dispatch::Queued(voice_queue.len())
                                             };
-                                            let feedback = match dispatch {
+                                            // A result that completed while recording must be
+                                            // shown first, in recording order; the spinner must
+                                            // not overwrite a result the user never saw. A
+                                            // dropped recording keeps its notice instead, and
+                                            // the pending result flushes at the next Done.
+                                            let mut feedback = match dispatch {
                                                 Dispatch::Sent => "转写中…".to_string(),
                                                 Dispatch::Queued(n) => format!("转写中，排队第 {n} 条"),
                                                 Dispatch::Dropped => "排队已满，请稍后再说".to_string(),
                                             };
+                                            let mut from_pending = false;
+                                            if !matches!(dispatch, Dispatch::Dropped) {
+                                                if let Some(text) = pending_display.pop_front() {
+                                                    feedback = text;
+                                                    from_pending = true;
+                                                }
+                                            }
                                             match show_voice_text(&device, &voice_page, &voice_dir, &feedback).await {
                                                 Ok(()) => voice_showing = true,
-                                                Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                                                Err(error) => {
+                                                    println!("VOICE_PAGE_FAILED\t{error}");
+                                                    if from_pending {
+                                                        pending_display.push_front(feedback);
+                                                    }
+                                                }
                                             }
                                         }
                                         Err(error) => println!("VOICE_WAV_FAILED\t{error}"),
@@ -259,20 +281,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(wav) = voice_current.take() {
                             let _ = std::fs::remove_file(&wav);
                         }
-                        match result {
+                        let display = match result {
                             Some(text) => {
-                                let display = if text.is_empty() { "没听清，请再说一遍" } else { &text };
                                 println!("VOICE_TEXT\t{text}");
-                                match show_voice_text(&device, &voice_page, &voice_dir, display).await {
-                                    Ok(()) => voice_showing = true,
-                                    Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                                if text.is_empty() {
+                                    "没听清，请再说一遍".to_string()
+                                } else {
+                                    text
                                 }
                             }
                             None => {
                                 println!("VOICE_TRANSCRIBE_FAILED");
-                                match show_voice_text(&device, &voice_page, &voice_dir, "转写失败，请再说一遍").await {
+                                "转写失败，请再说一遍".to_string()
+                            }
+                        };
+                        pending_display.push_back(display);
+                        if !recording {
+                            if let Some(text) = pending_display.pop_front() {
+                                match show_voice_text(&device, &voice_page, &voice_dir, &text).await {
                                     Ok(()) => voice_showing = true,
-                                    Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                                    Err(error) => {
+                                        println!("VOICE_PAGE_FAILED\t{error}");
+                                        pending_display.push_front(text);
+                                    }
                                 }
                             }
                         }
