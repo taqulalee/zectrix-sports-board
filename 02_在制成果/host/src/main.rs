@@ -690,9 +690,8 @@ async fn speak_text(
     if text == "正在查…" || text.trim().is_empty() {
         return;
     }
-    let speak: String = text.chars().take(100).collect();
     let pcm_path = voice_dir.join("speak.pcm");
-    match Command::new(voice_speak).arg(&speak).arg(&pcm_path).status() {
+    match Command::new(voice_speak).arg(text).arg(&pcm_path).status() {
         Ok(status) if status.success() => match std::fs::read(&pcm_path) {
             Ok(bytes) => {
                 let samples: Vec<i16> = bytes
