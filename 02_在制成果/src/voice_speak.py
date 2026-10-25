@@ -2,14 +2,17 @@
 """P2：把文字合成为 16kHz 单声道 PCM，供宿主 device.play 播放。
 
 用法：voice_speak.py <文字> <输出 pcm 路径>
-流程：口语句式改写（shape_speak）→ Piper（中文华艳 medium）→ WAV
-（22050Hz）→ ffmpeg 重采样到 16000Hz 单声道 s16le。成功 exit 0；
-失败 exit 非 0（宿主跳过播报，只显示文字）。Piper 在自身目录下
-运行，以找到自带的 espeak-ng 数据。
+流程：口语句式改写（shape_speak）→ Edge 神经网络音色
+（zh-CN-XiaoxiaoNeural，主用）→ MP3 → ffmpeg 重采样到 16000Hz
+单声道 s16le；Edge 失败时兜底 Piper（中文华艳 medium）→ WAV →
+ffmpeg 重采样。成功 exit 0；两路都失败 exit 非 0（宿主跳过播报，
+只显示文字）。所用引擎打印到 stderr（宿主日志可见）。
 
 为什么要改写：屏幕答案是排版碎片行（下一场：／联赛时间／主 vs 客），
 照搬念出来断句全落在不该停的地方；改写后是一句完整口语句子，
 停顿只落在逗号和句号处。长文本截断只截到句末，绝不半句切断。
+Edge 修的是断句（神经网络语调连贯）；设备端网络抖动造成的一卡一卡
+不在此修复范围内（走同一条播放链，任何引擎都会卡）。
 """
 
 import os
@@ -18,6 +21,9 @@ import subprocess
 import sys
 import tempfile
 
+EDGE_BIN = "/home/taqula/voice-tools/edge-venv/bin/edge-tts"
+EDGE_VOICE = "zh-CN-XiaoxiaoNeural"
+EDGE_TIMEOUT = 20  # Edge 超时即兜底 Piper，不让用户久等
 PIPER_BIN = "/home/taqula/voice-tools/piper/piper/piper"
 PIPER_MODEL = "/home/taqula/voice-tools/models/zh_CN-huayan-medium.onnx"
 PIPER_CONFIG = "/home/taqula/voice-tools/models/zh_CN-huayan-medium.onnx.json"
@@ -192,6 +198,40 @@ def shape_speak(text):
     return cap_sentence(out)
 
 
+def synth_edge(text, tmp):
+    """Edge 主用：成功返回 MP3 路径，失败返回 None（走兜底）。"""
+    mp3 = os.path.join(tmp, "speak.mp3")
+    try:
+        p = subprocess.run(
+            [EDGE_BIN, "--voice", EDGE_VOICE, "--text", text,
+             "--write-media", mp3],
+            capture_output=True, text=True, timeout=EDGE_TIMEOUT,
+        )
+    except Exception:
+        return None
+    if p.returncode != 0 or not os.path.exists(mp3) or os.path.getsize(mp3) == 0:
+        return None
+    return mp3
+
+
+def synth_piper(text, tmp):
+    """Piper 兜底：成功返回 WAV 路径，失败返回 None。"""
+    wav = os.path.join(tmp, "speak.wav")
+    piper_dir = os.path.dirname(PIPER_BIN)
+    try:
+        p = subprocess.run(
+            [PIPER_BIN, "--model", PIPER_MODEL, "--config", PIPER_CONFIG,
+             "--output_file", wav],
+            input=text, capture_output=True, text=True, timeout=120,
+            cwd=piper_dir,
+        )
+    except Exception:
+        return None
+    if p.returncode != 0 or not os.path.exists(wav):
+        return None
+    return wav
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         return 1
@@ -202,19 +242,17 @@ def main() -> int:
     text = shape_speak(text)
     if not text:
         return 1
-    piper_dir = os.path.dirname(PIPER_BIN)
     with tempfile.TemporaryDirectory() as tmp:
-        wav = os.path.join(tmp, "speak.wav")
-        p = subprocess.run(
-            [PIPER_BIN, "--model", PIPER_MODEL, "--config", PIPER_CONFIG,
-             "--output_file", wav],
-            input=text, capture_output=True, text=True, timeout=120,
-            cwd=piper_dir,
-        )
-        if p.returncode != 0 or not os.path.exists(wav):
+        src = synth_edge(text, tmp)
+        engine = "edge"
+        if src is None:
+            src = synth_piper(text, tmp)
+            engine = "piper-fallback"
+        if src is None:
             return 1
+        print(f"SPEAK_ENGINE={engine}", file=sys.stderr)
         f = subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", wav,
+            ["ffmpeg", "-y", "-v", "error", "-i", src,
              "-ar", "16000", "-ac", "1", "-f", "s16le", out_path],
             capture_output=True, text=True, timeout=120,
         )
