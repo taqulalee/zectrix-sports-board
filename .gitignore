@@ -1,0 +1,19 @@
+# 构建产物与运行时生成文件
+/02_在制成果/host/target/
+/02_在制成果/runtime/
+# 备份链
+*.bak*
+# 01 数据快照（本次决定不推）
+/01_当前有效资料/data_snapshots/
+/01_当前有效资料/runtime_snapshots/
+# 私人测试目录（本次决定不推）
+/03_项目固定资源/赛事标识/私人测试/
+# 密钥与凭证（纵深防御，扫描已确认无此类文件）
+*.env
+*.pem
+*.key
+*credentials*
+*secret*
+# Python 字节码
+__pycache__/
+*.pyc

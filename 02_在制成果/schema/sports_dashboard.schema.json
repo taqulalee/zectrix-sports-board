@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/zectrix/sports-dashboard.schema.json",
+  "title": "赛事看板 Pro 统一数据协议",
+  "type": "object",
+  "required": [
+    "meta",
+    "upcoming",
+    "results",
+    "featured",
+    "f1LastRace",
+    "f1Podium"
+  ],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": [
+        "generatedAt",
+        "timezone",
+        "mode",
+        "sources"
+      ],
+      "properties": {
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "timezone": {
+          "const": "Asia/Shanghai"
+        },
+        "mode": {
+          "enum": [
+            "demo",
+            "live",
+            "cached"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "status"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "partial",
+                  "failed",
+                  "cached"
+                ]
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "upcoming": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/result"
+      }
+    },
+    "featured": {
+      "$ref": "#/$defs/featured"
+    },
+    "f1LastRace": {
+      "type": "object",
+      "required": [
+        "name",
+        "location",
+        "date"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "f1Podium": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "position",
+          "name",
+          "team"
+        ],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "name": {
+            "type": "string"
+          },
+          "team": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": [
+        "id",
+        "sport",
+        "startTime",
+        "home",
+        "away",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sport": {
+          "enum": [
+            "EPL",
+            "F1"
+          ]
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "home": {
+          "type": "string"
+        },
+        "away": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "scheduled",
+            "live",
+            "finished",
+            "postponed"
+          ]
+        },
+        "league": {
+          "type": "string"
+        },
+        "leagueName": {
+          "type": "string"
+        },
+        "homeId": {
+          "type": "string"
+        },
+        "awayId": {
+          "type": "string"
+        },
+        "homeLogo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "awayLogo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "result": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event"
+        },
+        {
+          "type": "object",
+          "required": [
+            "homeScore",
+            "awayScore"
+          ],
+          "properties": {
+            "homeScore": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "awayScore": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "featured": {
+      "type": "object",
+      "required": [
+        "sport",
+        "title",
+        "startTime",
+        "venue",
+        "countdownLabel"
+      ],
+      "properties": {
+        "sport": {
+          "enum": [
+            "EPL",
+            "F1"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "venue": {
+          "type": "string"
+        },
+        "countdownLabel": {
+          "type": "string"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "startTime"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "startTime": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "past": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

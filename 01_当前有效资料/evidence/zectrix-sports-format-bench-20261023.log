@@ -1,0 +1,32 @@
+CONNECTED
+DISPLAY	mono	schedule	7516
+DISPLAY	mono	results	2239
+DISPLAY	mono	focus	7358
+DISPLAY	gray4	schedule	7621
+DISPLAY	gray4	results	6541
+DISPLAY	gray4	focus	6891
+DISPLAY	gray16	schedule	7904
+DISPLAY	gray16	results	7076
+DISPLAY	gray16	focus	9611
+SUMMARY	gray16	count=3	average_ms=8197	min_ms=7076	max_ms=9611
+SUMMARY	gray4	count=3	average_ms=7017	min_ms=6541	max_ms=7621
+SUMMARY	mono	count=3	average_ms=5704	min_ms=2239	max_ms=7516
+HOLDING	gray16	focus
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+EVENT	Key { key: Up, action: Short }
+EVENT	Key { key: Up, action: Short }
+EVENT	Key { key: Up, action: Short }
+EVENT	Key { key: Confirm, action: Short }
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding
+HEARTBEAT	still_holding

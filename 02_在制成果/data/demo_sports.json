@@ -1,0 +1,217 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-23T23:42:45.187231+08:00",
+    "timezone": "Asia/Shanghai",
+    "mode": "demo",
+    "sources": [
+      {
+        "name": "ESPN EPL",
+        "status": "partial",
+        "detail": "非官方接口；逐日快照含一次TLS重试"
+      },
+      {
+        "name": "Jolpica F1",
+        "status": "ok",
+        "detail": "2026赛程及最近完赛结果"
+      },
+      {
+        "name": "TheSportsDB",
+        "status": "partial",
+        "detail": "测试Key仅返回10队，不作为完整备源"
+      }
+    ]
+  },
+  "upcoming": [
+    {
+      "id": "401879253",
+      "sport": "EPL",
+      "startTime": "2026-10-24T03:00:00+08:00",
+      "home": "伊普斯维奇",
+      "away": "诺丁汉森林",
+      "status": "scheduled"
+    },
+    {
+      "id": "401879256",
+      "sport": "EPL",
+      "startTime": "2026-10-24T19:30:00+08:00",
+      "home": "维拉",
+      "away": "曼城",
+      "status": "scheduled"
+    },
+    {
+      "id": "401878768",
+      "sport": "EPL",
+      "startTime": "2026-10-24T22:00:00+08:00",
+      "home": "阿森纳",
+      "away": "埃弗顿",
+      "status": "scheduled"
+    },
+    {
+      "id": "401879255",
+      "sport": "EPL",
+      "startTime": "2026-10-24T22:00:00+08:00",
+      "home": "考文垂",
+      "away": "富勒姆",
+      "status": "scheduled"
+    },
+    {
+      "id": "401878767",
+      "sport": "EPL",
+      "startTime": "2026-10-25T00:30:00+08:00",
+      "home": "切尔西",
+      "away": "热刺",
+      "status": "scheduled"
+    },
+    {
+      "id": "401879254",
+      "sport": "EPL",
+      "startTime": "2026-10-25T22:00:00+08:00",
+      "home": "水晶宫",
+      "away": "纽卡斯尔",
+      "status": "scheduled"
+    },
+    {
+      "id": "401878766",
+      "sport": "EPL",
+      "startTime": "2026-10-25T22:00:00+08:00",
+      "home": "赫尔城",
+      "away": "布伦特福德",
+      "status": "scheduled"
+    },
+    {
+      "id": "401878765",
+      "sport": "EPL",
+      "startTime": "2026-10-25T22:00:00+08:00",
+      "home": "利物浦",
+      "away": "布莱顿",
+      "status": "scheduled"
+    },
+    {
+      "id": "401879252",
+      "sport": "EPL",
+      "startTime": "2026-10-25T22:00:00+08:00",
+      "home": "曼联",
+      "away": "伯恩茅斯",
+      "status": "scheduled"
+    },
+    {
+      "id": "401878764",
+      "sport": "EPL",
+      "startTime": "2026-10-26T00:30:00+08:00",
+      "home": "桑德兰",
+      "away": "利兹联",
+      "status": "scheduled"
+    }
+  ],
+  "results": [
+    {
+      "id": "401879257",
+      "sport": "EPL",
+      "startTime": "2026-10-20T03:00:00+08:00",
+      "home": "热刺",
+      "away": "考文垂",
+      "status": "finished",
+      "homeScore": 3,
+      "awayScore": 1
+    },
+    {
+      "id": "401878769",
+      "sport": "EPL",
+      "startTime": "2026-10-18T23:30:00+08:00",
+      "home": "诺丁汉森林",
+      "away": "阿森纳",
+      "status": "finished",
+      "homeScore": 0,
+      "awayScore": 1
+    },
+    {
+      "id": "401879263",
+      "sport": "EPL",
+      "startTime": "2026-10-18T21:00:00+08:00",
+      "home": "伯恩茅斯",
+      "away": "桑德兰",
+      "status": "finished",
+      "homeScore": 2,
+      "awayScore": 0
+    },
+    {
+      "id": "401879261",
+      "sport": "EPL",
+      "startTime": "2026-10-18T21:00:00+08:00",
+      "home": "布莱顿",
+      "away": "水晶宫",
+      "status": "finished",
+      "homeScore": 5,
+      "awayScore": 0
+    },
+    {
+      "id": "401879260",
+      "sport": "EPL",
+      "startTime": "2026-10-18T21:00:00+08:00",
+      "home": "利兹联",
+      "away": "曼联",
+      "status": "finished",
+      "homeScore": 1,
+      "awayScore": 1
+    },
+    {
+      "id": "401879258",
+      "sport": "EPL",
+      "startTime": "2026-10-18T00:30:00+08:00",
+      "home": "纽卡斯尔",
+      "away": "维拉",
+      "status": "finished",
+      "homeScore": 0,
+      "awayScore": 1
+    },
+    {
+      "id": "401879262",
+      "sport": "EPL",
+      "startTime": "2026-10-17T22:00:00+08:00",
+      "home": "布伦特福德",
+      "away": "利物浦",
+      "status": "finished",
+      "homeScore": 1,
+      "awayScore": 2
+    },
+    {
+      "id": "401878770",
+      "sport": "EPL",
+      "startTime": "2026-10-17T22:00:00+08:00",
+      "home": "富勒姆",
+      "away": "赫尔城",
+      "status": "finished",
+      "homeScore": 1,
+      "awayScore": 0
+    }
+  ],
+  "featured": {
+    "sport": "F1",
+    "title": "美国大奖赛",
+    "startTime": "2026-10-26T04:00:00+08:00",
+    "venue": "美洲赛道",
+    "countdownLabel": "2天04小时"
+  },
+  "f1LastRace": {
+    "name": "Singapore Grand Prix",
+    "location": "新加坡",
+    "date": "2026-10-11"
+  },
+  "f1Podium": [
+    {
+      "position": 1,
+      "name": "VER",
+      "team": "Red Bull"
+    },
+    {
+      "position": 2,
+      "name": "LEC",
+      "team": "Ferrari"
+    },
+    {
+      "position": 3,
+      "name": "ANT",
+      "team": "Mercedes"
+    }
+  ]
+}
