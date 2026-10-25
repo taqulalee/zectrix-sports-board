@@ -26,12 +26,13 @@ def wrap(draw, text, font, max_w):
 def main() -> int:
     text = sys.argv[1] if len(sys.argv) > 1 else ""
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("voice_page.png")
+    title = sys.argv[3] if len(sys.argv) > 3 else "语音识别"
     img = Image.new("L", (W, H), 255)
     draw = ImageDraw.Draw(img)
-    title = ImageFont.truetype(str(FONT_PATH), 14)
+    title_font = ImageFont.truetype(str(FONT_PATH), 14)
     body = ImageFont.truetype(str(FONT_PATH), 20)
     foot = ImageFont.truetype(str(FONT_PATH), 12)
-    draw.text((16, 12), "语音识别", font=title, fill=0)
+    draw.text((16, 12), title, font=title_font, fill=0)
     draw.line([(16, 34), (384, 34)], fill=0, width=1)
     lines = wrap(draw, text, body, 368)[:8]
     y = 48

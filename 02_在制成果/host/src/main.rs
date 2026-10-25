@@ -15,6 +15,12 @@ enum Dispatch {
     Dropped,
 }
 
+enum Pending {
+    Text { title: String, text: String },
+    Flip { step: i32 },
+    Refresh,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -35,6 +41,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parent()
         .map(|p| p.join("voice_page.py").to_string_lossy().into_owned())
         .unwrap_or_else(|| "voice_page.py".into());
+    let voice_answer = std::path::Path::new(&worker_script)
+        .parent()
+        .map(|p| p.join("voice_answer.py").to_string_lossy().into_owned())
+        .unwrap_or_else(|| "voice_answer.py".into());
     let voice_dir = std::path::Path::new(&dir)
         .parent()
         .map(|p| p.join("voice"))
@@ -62,7 +72,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut voice_busy = false;
     let mut voice_showing = false;
     let mut recording = false;
-    let mut pending_display: std::collections::VecDeque<String> =
+    let mut voice_refresh = false;
+    let mut pending_display: std::collections::VecDeque<Pending> =
         std::collections::VecDeque::new();
     let mut worker_ready = false;
     let mut voice_queue: std::collections::VecDeque<std::path::PathBuf> =
@@ -86,6 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if voice_showing {
                     if matches!(event, Event::Key { .. }) {
                         voice_showing = false;
+                        voice_refresh = false;
                         let pages = scan_pages(&dir);
                         if clamp_current(&pages, &mut current) {
                             match show_page(&device, &dir, pages[current]).await {
@@ -183,25 +195,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             // not overwrite a result the user never saw. A
                                             // dropped recording keeps its notice instead, and
                                             // the pending result flushes at the next Done.
-                                            let mut feedback = match dispatch {
-                                                Dispatch::Sent => "转写中…".to_string(),
-                                                Dispatch::Queued(n) => format!("转写中，排队第 {n} 条"),
-                                                Dispatch::Dropped => "排队已满，请稍后再说".to_string(),
-                                            };
-                                            let mut from_pending = false;
-                                            if !matches!(dispatch, Dispatch::Dropped) {
-                                                if let Some(text) = pending_display.pop_front() {
-                                                    feedback = text;
-                                                    from_pending = true;
+                                            if matches!(dispatch, Dispatch::Dropped) {
+                                                match show_voice_text(&device, &voice_page, &voice_dir, "语音识别", "排队已满，请稍后再说").await {
+                                                    Ok(()) => voice_showing = true,
+                                                    Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
                                                 }
-                                            }
-                                            match show_voice_text(&device, &voice_page, &voice_dir, &feedback).await {
-                                                Ok(()) => voice_showing = true,
-                                                Err(error) => {
-                                                    println!("VOICE_PAGE_FAILED\t{error}");
-                                                    if from_pending {
-                                                        pending_display.push_front(feedback);
-                                                    }
+                                            } else if let Some(item) = pending_display.pop_front() {
+                                                if let Some(item) = execute_pending(&device, &dir, &mut current, &mut last_shown, &voice_page, &voice_dir, &updater, &mut updating, &update_tx, &mut voice_showing, &mut voice_refresh, item).await {
+                                                    pending_display.push_front(item);
+                                                }
+                                            } else {
+                                                let feedback = match &dispatch {
+                                                    Dispatch::Sent => "转写中…".to_string(),
+                                                    Dispatch::Queued(n) => format!("转写中，排队第 {n} 条"),
+                                                    Dispatch::Dropped => unreachable!(),
+                                                };
+                                                match show_voice_text(&device, &voice_page, &voice_dir, "语音识别", &feedback).await {
+                                                    Ok(()) => voice_showing = true,
+                                                    Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
                                                 }
                                             }
                                         }
@@ -237,6 +248,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 updating = false;
                 let pages = scan_pages(&dir);
                 let prev = current;
+                let mut pushed = false;
                 if !clamp_current(&pages, &mut current) {
                     println!("NO_PAGES");
                 } else {
@@ -245,6 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(png) => {
                                 last_shown = png;
                                 voice_showing = false;
+                                pushed = true;
                                 println!("PAGE_FALLBACK\t{}\t{}", current + 1, pages[current].0);
                             }
                             Err(error) => println!("PAGE_FALLBACK_FAILED\t{error}"),
@@ -257,6 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     device.show_with_format(&latest, ImageFormat::Gray16).await?;
                                     last_shown = latest;
                                     voice_showing = false;
+                                    pushed = true;
                                     println!("AUTO_REFRESH\t{}\t{}", current + 1, pages[current].0);
                                 } else {
                                     println!("AUTO_REFRESH_SKIPPED\tvisible_page_unchanged");
@@ -266,6 +280,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     } else {
                         println!("POLL\tno_content_change");
+                    }
+                    if voice_refresh {
+                        voice_refresh = false;
+                        if !pushed {
+                            match show_voice_text(&device, &voice_page, &voice_dir, "语音识别", "已刷新").await {
+                                Ok(()) => voice_showing = true,
+                                Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                            }
+                        }
                     }
                 }
             }
@@ -281,29 +304,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(wav) = voice_current.take() {
                             let _ = std::fs::remove_file(&wav);
                         }
-                        let display = match result {
+                        let item = match result {
                             Some(text) => {
                                 println!("VOICE_TEXT\t{text}");
                                 if text.is_empty() {
-                                    "没听清，请再说一遍".to_string()
+                                    Pending::Text { title: "语音识别".to_string(), text: "没听清，请再说一遍".to_string() }
+                                } else if text.contains("刷新") {
+                                    Pending::Refresh
+                                } else if text.contains("上一页") || text.contains("前一页") {
+                                    Pending::Flip { step: -1 }
+                                } else if text.contains("下一页") || text.contains("后一页") || text.contains("翻页") {
+                                    Pending::Flip { step: 1 }
                                 } else {
-                                    text
+                                    match run_voice_answer(&voice_answer, &text) {
+                                        Some(answer) if !answer.trim().is_empty() => Pending::Text { title: "语音回答".to_string(), text: answer },
+                                        _ => Pending::Text { title: "语音识别".to_string(), text: format!("{text}\n没听懂，请换个说法") },
+                                    }
                                 }
                             }
                             None => {
                                 println!("VOICE_TRANSCRIBE_FAILED");
-                                "转写失败，请再说一遍".to_string()
+                                Pending::Text { title: "语音识别".to_string(), text: "转写失败，请再说一遍".to_string() }
                             }
                         };
-                        pending_display.push_back(display);
+                        pending_display.push_back(item);
                         if !recording {
-                            if let Some(text) = pending_display.pop_front() {
-                                match show_voice_text(&device, &voice_page, &voice_dir, &text).await {
-                                    Ok(()) => voice_showing = true,
-                                    Err(error) => {
-                                        println!("VOICE_PAGE_FAILED\t{error}");
-                                        pending_display.push_front(text);
-                                    }
+                            if let Some(item) = pending_display.pop_front() {
+                                if let Some(item) = execute_pending(&device, &dir, &mut current, &mut last_shown, &voice_page, &voice_dir, &updater, &mut updating, &update_tx, &mut voice_showing, &mut voice_refresh, item).await {
+                                    pending_display.push_front(item);
                                 }
                             }
                         }
@@ -439,17 +467,108 @@ async fn show_voice_text(
     device: &Device,
     voice_page: &str,
     voice_dir: &std::path::Path,
+    title: &str,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(voice_dir)?;
     let png_path = voice_dir.join("voice_page.png");
-    let status = Command::new(voice_page).arg(text).arg(&png_path).status()?;
+    let status = Command::new(voice_page).arg(text).arg(&png_path).arg(title).status()?;
     if !status.success() {
         return Err(format!("voice_page exited {status}").into());
     }
     let png = std::fs::read(&png_path)?;
     device.show_with_format(&png, ImageFormat::Gray16).await?;
     Ok(())
+}
+
+fn run_voice_answer(script: &str, text: &str) -> Option<String> {
+    match Command::new(script).arg(text).output() {
+        Ok(out) => {
+            let answer = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if answer.is_empty() {
+                None
+            } else {
+                Some(answer)
+            }
+        }
+        Err(error) => {
+            println!("VOICE_ANSWER_FAILED\t{error}");
+            None
+        }
+    }
+}
+
+async fn execute_pending(
+    device: &Device,
+    dir: &str,
+    current: &mut usize,
+    last_shown: &mut Vec<u8>,
+    voice_page: &str,
+    voice_dir: &std::path::Path,
+    updater: &str,
+    updating: &mut bool,
+    update_tx: &tokio::sync::mpsc::Sender<bool>,
+    voice_showing: &mut bool,
+    voice_refresh: &mut bool,
+    item: Pending,
+) -> Option<Pending> {
+    match item {
+        Pending::Text { title, text } => {
+            match show_voice_text(device, voice_page, voice_dir, &title, &text).await {
+                Ok(()) => {
+                    *voice_showing = true;
+                    None
+                }
+                Err(error) => {
+                    println!("VOICE_PAGE_FAILED\t{error}");
+                    Some(Pending::Text { title, text })
+                }
+            }
+        }
+        Pending::Flip { step } => {
+            *voice_showing = false;
+            let pages = scan_pages(dir);
+            if !clamp_current(&pages, current) {
+                println!("NO_PAGES");
+                return None;
+            }
+            let len = pages.len() as i32;
+            *current = (*current as i32 + step).rem_euclid(len) as usize;
+            match show_page(device, dir, pages[*current]).await {
+                Ok(png) => {
+                    *last_shown = png;
+                    println!("PAGE\t{}\t{}\tkey=voice", *current + 1, pages[*current].0);
+                    None
+                }
+                Err(error) => {
+                    println!("PAGE_READ_FAILED\t{error}");
+                    Some(Pending::Flip { step })
+                }
+            }
+        }
+        Pending::Refresh => {
+            if !*updating {
+                *updating = true;
+                let updater = updater.to_string();
+                let tx = update_tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    let changed = run_updater(&updater);
+                    let _ = tx.blocking_send(changed);
+                });
+            }
+            *voice_refresh = true;
+            match show_voice_text(device, voice_page, voice_dir, "语音识别", "正在刷新…").await {
+                Ok(()) => {
+                    *voice_showing = true;
+                    None
+                }
+                Err(error) => {
+                    println!("VOICE_PAGE_FAILED\t{error}");
+                    Some(Pending::Refresh)
+                }
+            }
+        }
+    }
 }
 
 fn spawn_voice_worker(
