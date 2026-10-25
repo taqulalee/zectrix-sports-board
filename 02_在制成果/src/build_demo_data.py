@@ -46,6 +46,12 @@ def session_start(race: dict, key: str) -> datetime | None:
     return datetime.fromisoformat(raw).astimezone(TZ)
 
 
+def race_start_of(race: dict) -> datetime:
+    """正赛开始时间（北京时间）。与 session_start 同款转换，供选下一场用。"""
+    raw = f"{race['date']}T{race.get('time', '00:00:00Z').replace('Z', '+00:00')}"
+    return datetime.fromisoformat(raw).astimezone(TZ)
+
+
 F1_LOCATION_NAMES = {
     "Singapore": "新加坡",
     "Austin": "奥斯汀",
@@ -213,8 +219,13 @@ def build(snapshot_dir: Path, output: Path, now: datetime, mode: str = "demo", r
     results.sort(key=lambda item: item["startTime"], reverse=True)
 
     races = schedule["MRData"]["RaceTable"]["Races"]
-    next_race = next(race for race in races if race["date"] >= now.date().isoformat())
-    race_start = datetime.fromisoformat(f"{next_race['date']}T{next_race.get('time', '00:00:00Z').replace('Z', '+00:00')}").astimezone(TZ)
+    # 用完整时间比较（不是日期字符串）：Jolpica 的 date 是 UTC 日期，
+    # 北京时间今天会比它早一天翻页；本站保留到北京时间次日中午 12 点。
+    next_race = next(
+        race for race in races
+        if race_start_of(race).replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1) >= now
+    )
+    race_start = race_start_of(next_race)
     delta = race_start - now
     days = max(0, delta.days)
     hours = max(0, delta.seconds // 3600)
