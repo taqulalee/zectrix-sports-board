@@ -116,7 +116,12 @@ def main():
     data = load()
     team = find_team(text, data)
     f1_ctx = any(w in text for w in ("F1", "f1", "大奖赛", "正赛", "排位赛"))
-    derby_ctx = "德比" in text
+    derby_ctx = (
+        "德比" in text
+        or "得比" in text
+        or (("国家" in text or "西班牙" in text)
+            and any(w in text for w in ("隔壁", "得笔", "德壁")))
+    )
     no_score = any(w in text for w in ("比分", "排名", "名次", "第几", "结果", "赢", "输"))
     if (f1_ctx or derby_ctx) and no_score:
         return 0  # 问的是比分/排名，不归时间分支猜
