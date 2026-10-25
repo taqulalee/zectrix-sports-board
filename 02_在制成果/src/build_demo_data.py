@@ -362,6 +362,18 @@ def build(snapshot_dir: Path, output: Path, now: datetime, mode: str = "demo", r
     if retained_featured is not None:
         football_featured = retained_featured
 
+    # 完赛领奖台：仅当本站已完赛且最新完赛（Jolpica）与本站是同一场时才挂；
+    # 同一场按 UTC 日期对（北京时间正赛时间转 UTC 后的日期 vs f1LastRace.date），
+    # 对不上不挂（Jolpica 未更新完的空窗、未来站页不贴旧领奖台）。
+    featured_podium = None
+    if race_start < now and podium and last_race_info.get("date") == race_start.astimezone(ZoneInfo("UTC")).date().isoformat():
+        featured_podium = [{
+            "position": item["position"],
+            "code": item["name"],
+            "team": item["team"],
+            "portrait": item["portrait"],
+        } for item in podium[:3]]
+
     # F1赛事页：仅当下一场正赛在 7 天内才出现，否则本轮不展示该页
     f1_featured = {
         "sport": "F1",
@@ -371,7 +383,8 @@ def build(snapshot_dir: Path, output: Path, now: datetime, mode: str = "demo", r
         "venue": F1_CIRCUIT_NAMES.get(next_race["Circuit"]["circuitName"], next_race["Circuit"]["circuitName"]),
         "countdownLabel": f"{days}天{hours:02d}小时",
         "sessions": sessions,
-        "sessionTop3": session_top3
+        "sessionTop3": session_top3,
+        "podium": featured_podium
     } if race_start - now <= timedelta(days=7) else None
 
     data = {

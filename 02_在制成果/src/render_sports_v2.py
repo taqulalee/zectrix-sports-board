@@ -316,11 +316,19 @@ def render_focus(
     else:
         draw.text((14, 122), "距离开赛", fill=55, font=font(font_path, 15))
         draw_countdown(draw, featured["countdownLabel"], 14, 139, font_path)
-    # 最新已完赛节次前三：标题行右侧、赛道图上方的空位（头像＋代号＋车队标，无标则队名）。
-    top3 = featured.get("sessionTop3")
+    # 右上前三：完赛且有领奖台时画“正赛前三”，优先于节次前三；
+    # 完赛无领奖台或未完赛时回退节次前三（现有行为不变）。
+    podium = featured.get("podium")
+    if featured.get("finished") and podium:
+        top3 = podium
+        top3_title = "正赛前三"
+    else:
+        session_top3 = featured.get("sessionTop3")
+        top3 = session_top3["top3"] if session_top3 else None
+        top3_title = f"{session_top3['sessionName']}前三" if session_top3 else None
     if top3:
-        draw.text((238, 48), f"{top3['sessionName']}前三", fill=25, font=font(font_path, 13))
-        for row, item in enumerate(top3["top3"][:3]):
+        draw.text((238, 48), top3_title, fill=25, font=font(font_path, 13))
+        for row, item in enumerate(top3[:3]):
             y = 66 + row * 22
             if logos_dir is not None and item.get("portrait"):
                 paste_portrait(image, logos_dir / item["portrait"], (238, y, 258, y + 20))
