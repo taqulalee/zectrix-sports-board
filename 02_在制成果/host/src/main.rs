@@ -234,6 +234,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("NO_PAGES");
                         }
                     }
+                    Event::Key { key: Key::Up, action: KeyAction::Long } |
+                    Event::Key { key: Key::Down, action: KeyAction::Long } => {
+                        let pages = scan_pages(&dir);
+                        if clamp_current(&pages, &mut current) {
+                            match show_page(&device, &dir, pages[current]).await {
+                                Ok(png) => {
+                                    last_shown = png;
+                                    println!("PAGE\t{}\t{}\tkey=refresh", current + 1, pages[current].0);
+                                }
+                                Err(error) => println!("PAGE_READ_FAILED\t{error}"),
+                            }
+                        } else {
+                            println!("NO_PAGES");
+                        }
+                    }
                     Event::RecordingStarted => {
                         recording = true;
                         println!("VOICE_LISTENING");
