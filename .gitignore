@@ -15,3 +15,6 @@
 # Python 字节码
 __pycache__/
 *.pyc
+# 本地部署物（不进仓）：仓库根 venv、本地字体
+.venv/
+/assets/
