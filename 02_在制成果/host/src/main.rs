@@ -1,6 +1,19 @@
-use std::process::Command;
+use std::io::{BufRead, Write};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::Duration;
 use zectrix_sdk::{Device, Event, ImageFormat, Key, KeyAction, OpenOptions};
+
+enum VoiceMsg {
+    Ready,
+    Done(Option<String>),
+    Died,
+}
+
+enum Dispatch {
+    Sent,
+    Queued(usize),
+    Dropped,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,11 +27,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get(3)
         .cloned()
         .unwrap_or_else(|| "../../03_项目固定资源/bin/update_live.sh".into());
-    let transcriber = args
+    let worker_script = args
         .get(4)
         .cloned()
-        .unwrap_or_else(|| "../src/voice_transcribe.py".into());
-    let voice_page = std::path::Path::new(&transcriber)
+        .unwrap_or_else(|| "../src/voice_worker.py".into());
+    let voice_page = std::path::Path::new(&worker_script)
         .parent()
         .map(|p| p.join("voice_page.py").to_string_lossy().into_owned())
         .unwrap_or_else(|| "voice_page.py".into());
@@ -45,9 +58,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_tick.tick().await;
     let (update_tx, mut update_rx) = tokio::sync::mpsc::channel::<bool>(1);
     let mut updating = false;
-    let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel::<Option<String>>(1);
+    let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel::<VoiceMsg>(8);
     let mut voice_busy = false;
     let mut voice_showing = false;
+    let mut worker_ready = false;
+    let mut voice_queue: std::collections::VecDeque<std::path::PathBuf> =
+        std::collections::VecDeque::new();
+    let mut voice_current: Option<std::path::PathBuf> = None;
+    let mut voice_seq: u64 = 0;
+    let mut worker_crashes: u32 = 0;
+    let mut worker_last_died: Option<std::time::Instant> = None;
+    let (mut voice_child, mut voice_stdin) =
+        match spawn_voice_worker(&worker_script, voice_tx.clone()) {
+            Some((child, stdin)) => (Some(child), Some(stdin)),
+            None => {
+                println!("VOICE_WORKER_SPAWN_FAILED");
+                (None, None)
+            }
+        };
     loop {
         tokio::select! {
             event = device.next_event() => {
@@ -115,45 +143,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Event::RecordingStarted => {
                         println!("VOICE_LISTENING");
-                        match show_voice_text(&device, &voice_page, &voice_dir, "正在聆听…").await {
-                            Ok(()) => voice_showing = true,
-                            Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
-                        }
                     }
                     Event::RecordingFinished { audio, reason } => {
                         match audio {
                             Some(audio) => {
                                 println!("VOICE_RECORDED\tsamples={}\treason={:?}", audio.samples.len(), reason);
-                                if voice_busy {
-                                    println!("VOICE_SKIPPED\tbusy");
+                                if let Err(error) = std::fs::create_dir_all(&voice_dir) {
+                                    println!("VOICE_DIR_FAILED\t{error}");
                                 } else {
-                                    voice_busy = true;
-                                    if let Err(error) = std::fs::create_dir_all(&voice_dir) {
-                                        println!("VOICE_DIR_FAILED\t{error}");
-                                        voice_busy = false;
-                                    } else {
-                                        let wav_path = voice_dir.join("last.wav");
-                                        match write_wav(&wav_path, &audio.samples) {
-                                            Ok(()) => {
-                                                let tx = voice_tx.clone();
-                                                let transcriber = transcriber.clone();
-                                                let wav = wav_path.to_string_lossy().into_owned();
-                                                tokio::task::spawn_blocking(move || {
-                                                    let out = Command::new(&transcriber).arg(&wav).output();
-                                                    let text = match out {
-                                                        Ok(o) if o.status.success() => {
-                                                            Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                                                        }
-                                                        _ => None,
-                                                    };
-                                                    let _ = tx.blocking_send(text);
-                                                });
-                                            }
-                                            Err(error) => {
-                                                println!("VOICE_WAV_FAILED\t{error}");
-                                                voice_busy = false;
+                                    voice_seq += 1;
+                                    let wav_path = voice_dir.join(format!("voice_{voice_seq}.wav"));
+                                    match write_wav(&wav_path, &audio.samples) {
+                                        Ok(()) => {
+                                            let dispatch = if worker_ready && !voice_busy {
+                                                if send_to_worker(&mut voice_stdin, &wav_path) {
+                                                    voice_busy = true;
+                                                    voice_current = Some(wav_path);
+                                                    Dispatch::Sent
+                                                } else {
+                                                    println!("VOICE_WORKER_WRITE_FAILED");
+                                                    voice_queue.push_front(wav_path);
+                                                    Dispatch::Queued(1)
+                                                }
+                                            } else if voice_queue.len() >= 3 {
+                                                let _ = std::fs::remove_file(&wav_path);
+                                                println!("VOICE_QUEUE_FULL");
+                                                Dispatch::Dropped
+                                            } else {
+                                                voice_queue.push_back(wav_path);
+                                                Dispatch::Queued(voice_queue.len())
+                                            };
+                                            let feedback = match dispatch {
+                                                Dispatch::Sent => "转写中…".to_string(),
+                                                Dispatch::Queued(n) => format!("转写中，排队第 {n} 条"),
+                                                Dispatch::Dropped => "排队已满，请稍后再说".to_string(),
+                                            };
+                                            match show_voice_text(&device, &voice_page, &voice_dir, &feedback).await {
+                                                Ok(()) => voice_showing = true,
+                                                Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
                                             }
                                         }
+                                        Err(error) => println!("VOICE_WAV_FAILED\t{error}"),
                                     }
                                 }
                             }
@@ -217,29 +247,83 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            text = voice_rx.recv() => {
-                voice_busy = false;
-                match text {
-                    Some(Some(text)) => {
-                        let _ = std::fs::remove_file(voice_dir.join("last.wav"));
-                        let display = if text.is_empty() { "没听清，请再说一遍" } else { &text };
-                        println!("VOICE_TEXT\t{text}");
-                        match show_voice_text(&device, &voice_page, &voice_dir, display).await {
-                            Ok(()) => voice_showing = true,
-                            Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+            msg = voice_rx.recv() => {
+                match msg {
+                    Some(VoiceMsg::Ready) => {
+                        worker_ready = true;
+                        println!("VOICE_WORKER_READY");
+                        drain_voice_queue(&mut voice_queue, &mut voice_stdin, &mut voice_busy, &mut voice_current);
+                    }
+                    Some(VoiceMsg::Done(result)) => {
+                        voice_busy = false;
+                        if let Some(wav) = voice_current.take() {
+                            let _ = std::fs::remove_file(&wav);
+                        }
+                        match result {
+                            Some(text) => {
+                                let display = if text.is_empty() { "没听清，请再说一遍" } else { &text };
+                                println!("VOICE_TEXT\t{text}");
+                                match show_voice_text(&device, &voice_page, &voice_dir, display).await {
+                                    Ok(()) => voice_showing = true,
+                                    Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                                }
+                            }
+                            None => {
+                                println!("VOICE_TRANSCRIBE_FAILED");
+                                match show_voice_text(&device, &voice_page, &voice_dir, "转写失败，请再说一遍").await {
+                                    Ok(()) => voice_showing = true,
+                                    Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                                }
+                            }
+                        }
+                        if worker_ready {
+                            drain_voice_queue(&mut voice_queue, &mut voice_stdin, &mut voice_busy, &mut voice_current);
                         }
                     }
-                    Some(None) => {
-                        println!("VOICE_TRANSCRIBE_FAILED\tkeeping_wav");
-                        match show_voice_text(&device, &voice_page, &voice_dir, "转写失败，请再说一遍").await {
-                            Ok(()) => voice_showing = true,
-                            Err(error) => println!("VOICE_PAGE_FAILED\t{error}"),
+                    Some(VoiceMsg::Died) => {
+                        worker_ready = false;
+                        voice_busy = false;
+                        if let Some(wav) = voice_current.take() {
+                            voice_queue.push_front(wav);
+                        }
+                        if let Some(mut old) = voice_child.take() {
+                            let _ = old.try_wait();
+                        }
+                        println!("VOICE_WORKER_DIED");
+                        let now = std::time::Instant::now();
+                        if let Some(last) = worker_last_died {
+                            if now.duration_since(last).as_secs() < 60 {
+                                worker_crashes += 1;
+                            } else {
+                                worker_crashes = 1;
+                            }
+                        } else {
+                            worker_crashes = 1;
+                        }
+                        worker_last_died = Some(now);
+                        if worker_crashes >= 3 {
+                            println!("VOICE_WORKER_BROKEN");
+                        } else {
+                            match spawn_voice_worker(&worker_script, voice_tx.clone()) {
+                                Some((child, stdin)) => {
+                                    voice_child = Some(child);
+                                    voice_stdin = Some(stdin);
+                                }
+                                None => {
+                                    voice_stdin = None;
+                                    println!("VOICE_WORKER_SPAWN_FAILED");
+                                }
+                            }
                         }
                     }
                     None => println!("VOICE_CHANNEL_CLOSED"),
                 }
             }
         }
+    }
+    voice_stdin.take();
+    if let Some(mut child) = voice_child.take() {
+        let _ = child.kill();
     }
     device.close().await?;
     Ok(())
@@ -326,6 +410,7 @@ async fn show_voice_text(
     voice_dir: &std::path::Path,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(voice_dir)?;
     let png_path = voice_dir.join("voice_page.png");
     let status = Command::new(voice_page).arg(text).arg(&png_path).status()?;
     if !status.success() {
@@ -334,4 +419,74 @@ async fn show_voice_text(
     let png = std::fs::read(&png_path)?;
     device.show_with_format(&png, ImageFormat::Gray16).await?;
     Ok(())
+}
+
+fn spawn_voice_worker(
+    script: &str,
+    tx: tokio::sync::mpsc::Sender<VoiceMsg>,
+) -> Option<(Child, ChildStdin)> {
+    let mut child = Command::new(script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .ok()?;
+    let stdin = child.stdin.take()?;
+    let stdout = child.stdout.take()?;
+    std::thread::spawn(move || {
+        let reader = std::io::BufReader::new(stdout);
+        let mut ready = false;
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            if !ready {
+                if line == "READY" {
+                    ready = true;
+                    let _ = tx.blocking_send(VoiceMsg::Ready);
+                } else {
+                    break;
+                }
+            } else if let Some(text) = line.strip_prefix("OK\t") {
+                let _ = tx.blocking_send(VoiceMsg::Done(Some(text.to_string())));
+            } else if line.strip_prefix("ERR\t").is_some() {
+                let _ = tx.blocking_send(VoiceMsg::Done(None));
+            } else {
+                break;
+            }
+        }
+        let _ = tx.blocking_send(VoiceMsg::Died);
+    });
+    Some((child, stdin))
+}
+
+fn send_to_worker(stdin: &mut Option<ChildStdin>, wav: &std::path::Path) -> bool {
+    match stdin {
+        Some(s) => {
+            let line = format!("{}\n", wav.display());
+            s.write_all(line.as_bytes()).and_then(|_| s.flush()).is_ok()
+        }
+        None => false,
+    }
+}
+
+fn drain_voice_queue(
+    queue: &mut std::collections::VecDeque<std::path::PathBuf>,
+    stdin: &mut Option<ChildStdin>,
+    busy: &mut bool,
+    current: &mut Option<std::path::PathBuf>,
+) {
+    if *busy {
+        return;
+    }
+    if let Some(wav) = queue.pop_front() {
+        if send_to_worker(stdin, &wav) {
+            *busy = true;
+            *current = Some(wav);
+        } else {
+            queue.push_front(wav);
+            println!("VOICE_WORKER_WRITE_FAILED");
+        }
+    }
 }
