@@ -103,6 +103,15 @@ def ucl_round_label(slug: str | None) -> str:
     return "欧冠淘汰赛"
 
 
+def featured_title(item: dict) -> str | None:
+    """大赛标题：德比对或欧冠淘汰赛；不是大赛返回 None（仅保留逻辑用）。"""
+    pair = frozenset({item["homeId"], item["awayId"]})
+    title = DERBY_TITLES.get(pair)
+    if title is None and item["league"] == "uefa.champions" and (item.get("roundSlug") or "") != "league-phase":
+        title = ucl_round_label(item.get("roundSlug"))
+    return title
+
+
 def team_name(item: dict, zh_by_id: dict | None = None) -> str:
     team = item["team"]
     zh = (zh_by_id or {}).get(str(team.get("id", "")))
@@ -284,6 +293,41 @@ def build(snapshot_dir: Path, output: Path, now: datetime, mode: str = "demo", r
                 } for item in raw["top3"]],
             }
 
+    # 焦点赛事结果保留（优先于 upcoming）：已完赛大赛在北京时间次日中午 12 点前
+    # 优先展示（带比分与已结束），与 F1 保留规则同一套（开球时间的北京时间日期＋1 天中午 12 点）。
+    # results 已按开球时间倒序，第一个命中的就是最近的一场完赛大赛。
+    retained_featured = None
+    for item in results:
+        if item["status"] != "finished":
+            continue
+        title = featured_title(item)
+        if title is None:
+            continue
+        kickoff = datetime.fromisoformat(item["startTime"])
+        keep_until = kickoff.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        if keep_until < now:
+            continue
+        kickoff_delta = kickoff - now
+        retained_featured = {
+            "sport": "FOOTBALL",
+            "title": title,
+            "league": item["league"],
+            "leagueName": item["leagueName"],
+            "startTime": item["startTime"],
+            "venue": item.get("venue"),
+            "countdownLabel": f"{max(0, kickoff_delta.days)}天{max(0, kickoff_delta.seconds // 3600):02d}小时",
+            "homeId": item["homeId"],
+            "awayId": item["awayId"],
+            "home": item["home"],
+            "away": item["away"],
+            "homeLogo": item.get("homeLogo"),
+            "awayLogo": item.get("awayLogo"),
+            "homeScore": item["homeScore"],
+            "awayScore": item["awayScore"],
+            "finished": True,
+        }
+        break
+
     # 焦点赛事只放大赛（欧冠淘汰赛、德比），不放 F1；
     # upcoming 已按开球时间升序，第一个命中的就是最近的一场大赛，不限时间窗口
     football_featured = None
@@ -314,6 +358,9 @@ def build(snapshot_dir: Path, output: Path, now: datetime, mode: str = "demo", r
             "awayLogo": item.get("awayLogo"),
         }
         break
+
+    if retained_featured is not None:
+        football_featured = retained_featured
 
     # F1赛事页：仅当下一场正赛在 7 天内才出现，否则本轮不展示该页
     f1_featured = {

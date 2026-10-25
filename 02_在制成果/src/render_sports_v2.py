@@ -286,13 +286,19 @@ def render_focus(
         draw.text((76 - home_w // 2, 196), featured.get("home", ""), fill=25, font=font(font_path, 16))
         away_w = draw.textbbox((0, 0), featured.get("away", ""), font=font(font_path, 16))[2]
         draw.text((324 - away_w // 2, 196), featured.get("away", ""), fill=25, font=font(font_path, 16))
-        draw.text((186, 146), "VS", fill=25, font=font(font_path, 28))
+        if featured.get("finished"):
+            draw.text((186, 146), f"{featured['homeScore']}:{featured['awayScore']}", fill=25, font=font(font_path, 28))
+        else:
+            draw.text((186, 146), "VS", fill=25, font=font(font_path, 28))
         start = datetime.fromisoformat(featured["startTime"])
         weekdays = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
         kickoff = f"{start.strftime('%m月%d日')} {weekdays[start.weekday()]} {start.strftime('%H:%M')} 开球"
         kickoff_w = draw.textbbox((0, 0), kickoff, font=font(font_path, 17))[2]
         draw.text(((WIDTH - kickoff_w) // 2, 222), kickoff, fill=25, font=font(font_path, 17))
-        countdown = f"还有 {featured['countdownLabel']}"
+        if featured.get("finished"):
+            countdown = "已结束"
+        else:
+            countdown = f"还有 {featured['countdownLabel']}"
         countdown_w = draw.textbbox((0, 0), countdown, font=font(font_path, 17))[2]
         draw.text(((WIDTH - countdown_w) // 2, 244), countdown, fill=25, font=font(font_path, 17))
         footer_text = featured.get("leagueName", "")
