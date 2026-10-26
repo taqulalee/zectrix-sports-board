@@ -26,7 +26,8 @@ F1_RACE_NAMES = {
     "Abu Dhabi Grand Prix": "阿布扎比大奖赛"
 }
 F1_CIRCUIT_NAMES = {
-    "Circuit of the Americas": "美洲赛道"
+    "Circuit of the Americas": "美洲赛道",
+    "Autódromo Hermanos Rodríguez": "罗德里格斯兄弟赛道",
 }
 SESSION_FIELDS = (
     ("FirstPractice", "一练"),
