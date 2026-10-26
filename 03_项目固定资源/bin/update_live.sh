@@ -19,8 +19,16 @@ if [ ! -f "$FONT" ]; then
 fi
 
 export TZ="Asia/Shanghai"
+# 赛道图按当前 F1 分站选：helper 读 Jolpica 赛程快照＋当前时间，用与 build 一致的
+# 保留规则选分站（墨西哥站用 mx-1962.geojson，美国站用 COTA，未知分站回退 COTA）；
+# helper 任何异常或空输出都回退 COTA，绝不拖垮更新。
+TRACK_GEOJSON="$("$PYTHON" "$ROOT/02_在制成果/src/select_track.py" \
+  --snapshot "$ROOT/01_当前有效资料/runtime_snapshots/jolpica_f1_2026_schedule.json" \
+  --circuit-dir "$ROOT/01_当前有效资料/circuit_data" \
+  || echo "$ROOT/01_当前有效资料/circuit_data/cota_us_2012.geojson")"
+[ -n "$TRACK_GEOJSON" ] || TRACK_GEOJSON="$ROOT/01_当前有效资料/circuit_data/cota_us_2012.geojson"
 exec "$PYTHON" "$ROOT/02_在制成果/src/update_live.py" \
   --root "$ROOT" \
   --font "$FONT" \
-  --track-geojson "$ROOT/01_当前有效资料/circuit_data/cota_us_2012.geojson" \
+  --track-geojson "$TRACK_GEOJSON" \
   --f1-logo "$ROOT/03_项目固定资源/赛事标识/私人测试/F1官方Logo_用户提供截图提取.png"
