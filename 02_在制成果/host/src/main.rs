@@ -99,6 +99,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut refresh_tick = tokio::time::interval(Duration::from_secs(600));
     refresh_tick.tick().await;
+    // 马拉松晨间提醒：60 秒检查一次，北京时间 07:30-07:39 窗口内每天一次。
+    // 宿主无日期库，用 UNIX 时间 +8 小时算北京时间日；比赛日为 2026-11-01。
+    // 1793489400 = 2026-11-01 07:30 CST 的 UNIX 时间戳，+28800 后按北京时间日计。
+    let mut reminder_tick = tokio::time::interval(Duration::from_secs(60));
+    reminder_tick.tick().await;
+    let mut last_marathon_reminder_day: Option<u64> = None;
+    const MARATHON_RACE_DAY: u64 = (1793489400u64 + 28800) / 86400;
+    println!("MARATHON_REMINDER_ARMED\trace_day={MARATHON_RACE_DAY}");
     let (update_tx, mut update_rx) = tokio::sync::mpsc::channel::<bool>(1);
     let mut updating = false;
     let (voice_tx, mut voice_rx) = tokio::sync::mpsc::channel::<VoiceMsg>(8);
@@ -322,6 +330,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     }
                     other => println!("EVENT\t{other:?}"),
+                }
+            }
+            _ = reminder_tick.tick() => {
+                // 北京时间：UTC 时间戳 +8 小时后取日与时分。
+                let now_secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let beijing_secs = now_secs + 8 * 3600;
+                let today_day = beijing_secs / 86400;
+                let secs_of_day = beijing_secs % 86400;
+                let hour = secs_of_day / 3600;
+                let minute = (secs_of_day % 3600) / 60;
+                if hour == 7 && minute >= 30 && minute < 40
+                    && today_day <= MARATHON_RACE_DAY
+                    && last_marathon_reminder_day != Some(today_day)
+                {
+                    if recording || voice_showing || voice_busy || hermes_busy {
+                        println!("MARATHON_REMINDER_DEFERRED\tbusy");
+                    } else {
+                        let pages = scan_pages(&dir);
+                        if let Some(idx) = pages.iter().position(|(name, _)| *name == "marathon") {
+                            if clamp_current(&pages, &mut current) {
+                                current = idx;
+                                match show_page(&device, &dir, pages[current]).await {
+                                    Ok(png) => {
+                                        last_shown = png;
+                                        voice_showing = false;
+                                        confirm_team = None;
+                                        let text = if today_day == MARATHON_RACE_DAY {
+                                            "今天就是杭州马拉松，早上七点半鸣枪".to_string()
+                                        } else {
+                                            format!("杭州马拉松倒计时，还有{}天", MARATHON_RACE_DAY - today_day)
+                                        };
+                                        last_marathon_reminder_day = Some(today_day);
+                                        println!("MARATHON_REMINDER_DONE\t{text}");
+                                        speak_text(&device, &voice_speak, &voice_dir, &text).await;
+                                    }
+                                    Err(error) => println!("MARATHON_REMINDER_PAGE_FAILED\t{error}"),
+                                }
+                            }
+                        } else {
+                            println!("MARATHON_REMINDER_NO_PAGE");
+                        }
+                    }
                 }
             }
             _ = refresh_tick.tick() => {
