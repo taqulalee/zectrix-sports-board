@@ -375,3 +375,33 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def render_marathon(output_path, font_path, map_path, page_label):
+    """杭州马拉松页：顶栏标题+倒计时，下方官方地图主体（400x257，16阶灰）。
+    开跑后、11月2日12:00前显示“已开跑”，不出现负数倒计时。返回倒计时文本。"""
+    from datetime import datetime as _dt
+    race = _dt(2026, 11, 1, 7, 30, tzinfo=TZ) if "TZ" in globals() else None
+    if race is None:
+        from zoneinfo import ZoneInfo as _ZI
+        race = _dt(2026, 11, 1, 7, 30, tzinfo=_ZI("Asia/Shanghai"))
+        now = _dt.now(_ZI("Asia/Shanghai"))
+    else:
+        now = _dt.now(race.tzinfo)
+    delta = race - now
+    if delta.total_seconds() <= 0:
+        countdown = "已开跑"
+    else:
+        countdown = f"距开跑{delta.days}天{delta.seconds // 3600}小时"
+    image = Image.new("L", (WIDTH, HEIGHT), 246)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, WIDTH, 43), fill=22)
+    draw.text((11, 7), "杭州马拉松", fill=255, font=font(font_path, 24))
+    title_w = draw.textbbox((0, 0), "杭州马拉松", font=font(font_path, 24))[2]
+    draw.text((11 + title_w + 12, 13), countdown, fill=255, font=font(font_path, 18))
+    page_w = draw.textbbox((0, 0), page_label, font=font(font_path, 14))[2]
+    draw.text((389 - page_w, 14), page_label, fill=210, font=font(font_path, 14))
+    mp = Image.open(map_path).convert("L")
+    image.paste(mp, (0, 43))
+    image.save(str(output_path))
+    return countdown

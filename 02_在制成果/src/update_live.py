@@ -11,7 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from build_demo_data import build
-from render_sports_v2 import render_focus, render_results, render_schedule
+from render_sports_v2 import render_focus, render_marathon, render_results, render_schedule
 
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -208,9 +208,25 @@ def main() -> int:
     current_data = root / "02_在制成果" / "runtime" / "sports.json"
     build(snapshot_dir, next_data, now, mode="live", root=root)
     new_payload = json.loads(next_data.read_text())
+    # 马拉松页：保留到 2026-11-02 12:00；倒计时只到小时，体育数据不变时也要单独重渲，避免冻结。
+    marathon_cutoff = datetime(2026, 11, 2, 12, 0, tzinfo=TZ)
+    marathon_active = now < marathon_cutoff
+    marathon_map = root / "03_项目固定资源" / "hangzhou_marathon_2026_map_gray16.png"
+    page_dir_pre = root / "02_在制成果" / "runtime" / "pages"
+    marathon_page_pre = page_dir_pre / "05_marathon.png"
     if current_data.exists():
         current_payload = json.loads(current_data.read_text())
         if semantic(new_payload) == semantic(current_payload):
+            if marathon_active:
+                # 先算本轮总页数（F1 页存在与否由新 payload 定），只重渲马拉松页
+                _has_f1 = new_payload.get("f1Featured") is not None
+                _total = 3 + (1 if _has_f1 else 0) + 1
+                _tmp = root / "02_在制成果" / "runtime" / "next_pages"
+                _tmp.mkdir(parents=True, exist_ok=True)
+                render_marathon(_tmp / "05_marathon.tmp.png", args.font, marathon_map, page_label=f"{_total} / {_total}")
+                os.replace(_tmp / "05_marathon.tmp.png", marathon_page_pre)
+            else:
+                marathon_page_pre.unlink(missing_ok=True)
             next_data.unlink()
             print("UNCHANGED")
             return 3
@@ -221,7 +237,7 @@ def main() -> int:
     temporary_dir.mkdir(parents=True, exist_ok=True)
     logos_dir = root / "03_项目固定资源" / "赛事标识"
     has_f1_page = new_payload.get("f1Featured") is not None
-    total_pages = 4 if has_f1_page else 3
+    total_pages = 3 + (1 if has_f1_page else 0) + (1 if marathon_active else 0)
     render_schedule(new_payload, temporary_dir / "01_schedule.tmp.png", args.font, logos_dir, page_label=f"1 / {total_pages}")
     render_results(new_payload, temporary_dir / "02_results.tmp.png", args.font, args.f1_logo, logos_dir, page_label=f"2 / {total_pages}")
     render_focus(
@@ -251,10 +267,20 @@ def main() -> int:
             page_label=f"4 / {total_pages}",
         )
         replace_pairs.append((temporary_dir / "04_f1_focus.tmp.png", page_dir / "04_f1_focus.png"))
+    if marathon_active:
+        render_marathon(
+            temporary_dir / "05_marathon.tmp.png",
+            args.font,
+            marathon_map,
+            page_label=f"{total_pages} / {total_pages}",
+        )
+        replace_pairs.append((temporary_dir / "05_marathon.tmp.png", page_dir / "05_marathon.png"))
     for source, destination in replace_pairs:
         os.replace(source, destination)
     if not has_f1_page:
         (page_dir / "04_f1_focus.png").unlink(missing_ok=True)
+    if not marathon_active:
+        (page_dir / "05_marathon.png").unlink(missing_ok=True)
     os.replace(next_data, current_data)
     print(f"UPDATED {now.isoformat()} failures={len(failures)}")
     return 0

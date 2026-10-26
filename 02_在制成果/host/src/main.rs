@@ -523,11 +523,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn scan_pages(dir: &str) -> Vec<(&'static str, &'static str)> {
-    const KNOWN: [(&str, &str); 4] = [
+    const KNOWN: [(&str, &str); 5] = [
         ("schedule", "01_schedule.png"),
         ("results", "02_results.png"),
         ("focus", "03_focus.png"),
         ("f1focus", "04_f1_focus.png"),
+        ("marathon", "05_marathon.png"),
     ];
     KNOWN
         .into_iter()
