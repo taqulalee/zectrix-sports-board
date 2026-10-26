@@ -211,12 +211,21 @@ def main() -> int:
     # 马拉松页：保留到 2026-11-02 12:00；倒计时只到小时，体育数据不变时也要单独重渲，避免冻结。
     marathon_cutoff = datetime(2026, 11, 2, 12, 0, tzinfo=TZ)
     marathon_active = now < marathon_cutoff
+    # 总页数变化时（如新增/下线马拉松页、F1 页进出），必须全量重渲，否则 01-04 的页码分母仍是旧总数。
+    # 上次全量渲染的总页数存在 runtime/last_total_pages.txt；不存在时视为已变，强制全量一次。
+    _total_file = root / "02_在制成果" / "runtime" / "last_total_pages.txt"
+    try:
+        _last_total = int(_total_file.read_text().strip())
+    except Exception:
+        _last_total = None
+    _expected_total_pre = 3 + (1 if new_payload.get("f1Featured") is not None else 0) + (1 if marathon_active else 0)
+    _total_changed = (_last_total != _expected_total_pre)
     marathon_map = root / "03_项目固定资源" / "hangzhou_marathon_2026_map_gray16.png"
     page_dir_pre = root / "02_在制成果" / "runtime" / "pages"
     marathon_page_pre = page_dir_pre / "05_marathon.png"
     if current_data.exists():
         current_payload = json.loads(current_data.read_text())
-        if semantic(new_payload) == semantic(current_payload):
+        if semantic(new_payload) == semantic(current_payload) and not _total_changed:
             if marathon_active:
                 # 先算本轮总页数（F1 页存在与否由新 payload 定），只重渲马拉松页
                 _has_f1 = new_payload.get("f1Featured") is not None
@@ -282,6 +291,7 @@ def main() -> int:
     if not marathon_active:
         (page_dir / "05_marathon.png").unlink(missing_ok=True)
     os.replace(next_data, current_data)
+    _total_file.write_text(str(total_pages) + "\n")
     print(f"UPDATED {now.isoformat()} failures={len(failures)}")
     return 0
 
