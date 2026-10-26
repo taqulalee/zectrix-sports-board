@@ -395,7 +395,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     hermes_busy = false;
                     let item = match answer {
                         Some(a) if !a.trim().is_empty() => Pending::Text { title: "语音回答".to_string(), text: a },
-                        _ => Pending::Text { title: "语音识别".to_string(), text: format!("{asked}\n没听懂，请换个说法") },
+                        _ => match run_voice_fallback(&voice_answer, &asked) {
+                            Some(fb) => Pending::Text { title: "语音回答".to_string(), text: fb },
+                            None => Pending::Text { title: "语音识别".to_string(), text: format!("{asked}\n没听懂，请换个说法") },
+                        },
                     };
                     pending_display.push_back(item);
                     if !recording {
@@ -624,6 +627,23 @@ fn run_voice_answer(script: &str, text: &str) -> Option<String> {
         }
         Err(error) => {
             println!("VOICE_ANSWER_FAILED\t{error}");
+            None
+        }
+    }
+}
+
+fn run_voice_fallback(script: &str, text: &str) -> Option<String> {
+    match Command::new(script).arg(text).arg("fallback").output() {
+        Ok(out) => {
+            let answer = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if answer.is_empty() {
+                None
+            } else {
+                Some(answer)
+            }
+        }
+        Err(error) => {
+            println!("VOICE_FALLBACK_FAILED\t{error}");
             None
         }
     }

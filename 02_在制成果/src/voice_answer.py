@@ -88,6 +88,14 @@ def answer_derby(data):
     return "\n".join(lines)
 
 
+def answer_derby_score(data):
+    f = data.get("featured") or {}
+    if not f.get("finished") or f.get("homeScore") is None or f.get("awayScore") is None or not f.get("startTime"):
+        return None
+    title = f.get("title") or "国家德比"
+    return f"{title}\n{fmt_time(f['startTime'])}\n{f.get('home', '')} {f.get('homeScore')}:{f.get('awayScore')} {f.get('away', '')}"
+
+
 def answer_f1(data, quali):
     f = data.get("f1Featured") or {}
     sessions = f.get("sessions") or []
@@ -113,6 +121,16 @@ def main():
     text = sys.argv[1] if len(sys.argv) > 1 else ""
     if not text:
         return 0
+    mode = sys.argv[2] if len(sys.argv) > 2 else ""
+    if mode == "fallback":
+        data = load()
+        f = data.get("featured") or {}
+        if "德比" in text and f.get("finished") and f.get("homeScore") is not None and f.get("awayScore") is not None and f.get("startTime"):
+            lines = [f.get("title") or "国家德比", fmt_time(f["startTime"]), f"{f.get('home', '')} {f.get('homeScore')}:{f.get('awayScore')} {f.get('away', '')}"]
+            if any(w in text for w in ("谁进", "进球", "进的球")):
+                lines.append("进球者本地暂无")
+            print("\n".join(lines))
+        return 0
     if "正在" in text and ("比赛" in text or "进行" in text):
         return 0  # 进行中的比赛本地无数据，走 Hermes 现查
     data = load()
@@ -125,6 +143,11 @@ def main():
             and any(w in text for w in ("隔壁", "得笔", "德壁")))
     )
     no_score = any(w in text for w in ("比分", "排名", "名次", "第几", "结果", "赢", "输"))
+    if derby_ctx and "比分" in text:
+        score = answer_derby_score(data)
+        if score and not any(w in text for w in ("谁进", "进球", "进的球")):
+            print(score)
+            return 0
     if (f1_ctx or derby_ctx) and no_score:
         return 0  # 问的是比分/排名，不归时间分支猜
     if f1_ctx:
