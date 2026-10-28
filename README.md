@@ -34,7 +34,6 @@ python 02_在制成果/src/render_sports_v2.py \
 - `[KNOWN｜HIGH]` 输出是400×300、8-bit连续灰度PNG。
 - `[KNOWN｜HIGH]` 不传`--now`时按Asia/Shanghai当前时间重新计算焦点赛事倒计时。
 - `[KNOWN｜HIGH]` 本阶段不执行NOTE4推送。
-- `[KNOWN｜HIGH]` 当前为私人测试项目，F1图形Logo来自用户提供截图，不用于公开发布。
 
 ## 真机按键与页面
 
